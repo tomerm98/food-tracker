@@ -77,19 +77,42 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.AlertDialog
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ExperimentalAnimationApi
+import androidx.compose.animation.with
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.AnimatedContentScope
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.Animatable
+import androidx.compose.ui.unit.IntOffset
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Load saved preference for Hebrew mode
+        val prefs = getPreferences(MODE_PRIVATE)
+        val initialHebrew = prefs.getBoolean("hebrew_mode", false)
+
         setContent {
-            val isHebrew = rememberSaveable { mutableStateOf(false) }
+            val isHebrew = remember { mutableStateOf(initialHebrew) }
 
             CompositionLocalProvider(LocalLayoutDirection provides if (isHebrew.value) LayoutDirection.Rtl else LayoutDirection.Ltr) {
                 FoodTrackerTheme {
                     val context = LocalContext.current
                     val keyboardController = LocalSoftwareKeyboardController.current
                     val focusManager = LocalFocusManager.current
+                    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+                    LaunchedEffect(imeVisible) {
+                        if (!imeVisible) {
+                            focusManager.clearFocus(force = true)
+                        }
+                    }
                     val vm: FoodViewModel = viewModel(factory = object : ViewModelProvider.Factory {
                         override fun <T : ViewModel> create(modelClass: Class<T>): T {
                             val db = AppDatabase.getInstance(context)
@@ -142,7 +165,10 @@ class MainActivity : ComponentActivity() {
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text("עברית", modifier = Modifier.weight(1f))
-                                    Switch(checked = isHebrew.value, onCheckedChange = { isHebrew.value = it })
+                                    Switch(checked = isHebrew.value, onCheckedChange = {
+                                        isHebrew.value = it
+                                        prefs.edit().putBoolean("hebrew_mode", it).apply()
+                                    })
                                 }
                             }
                         }
@@ -167,27 +193,70 @@ fun FoodScreen(vm: FoodViewModel, modifier: Modifier = Modifier, openDrawer: () 
     val formatter = remember { DateTimeFormatter.ofPattern("EEEE, yyyy-MM-dd") }
 
     var newFood by remember { mutableStateOf("") }
+    var confirmDelete by remember { mutableStateOf<String?>(null) }
 
     val ctx = LocalContext.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
+    // whenever the IME (software keyboard) is dismissed manually, also clear focus so the cursor disappears
+    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    LaunchedEffect(imeVisible) {
+        if (!imeVisible) {
+            focusManager.clearFocus(force = true)
+        }
+    }
+
+    // horizontal swipe offset for pager-like animation
+    val offsetX = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
 
     Column(
         modifier
             .fillMaxSize()
             .pointerInput(Unit) {
+                val widthPx = size.width.toFloat()
                 var totalDx = 0f
+
                 detectHorizontalDragGestures(
                     onHorizontalDrag = { change, dragAmount ->
-                        change.consume()
                         totalDx += dragAmount
+                        // follow finger
+                        scope.launch {
+                            offsetX.snapTo(offsetX.value + dragAmount)
+                        }
                     },
                     onDragEnd = {
-                        val threshold = 50
-                        if (totalDx > threshold) vm.prevDay() else if (totalDx < -threshold) vm.nextDay()
+                        val threshold = widthPx * 0.25f
+                        when {
+                            totalDx > threshold -> {
+                                // swipe right → previous day
+                                scope.launch {
+                                    offsetX.animateTo(widthPx, tween(150))
+                                    vm.prevDay()
+                                    offsetX.snapTo(-widthPx)
+                                    offsetX.animateTo(0f, tween(150))
+                                }
+                            }
+                            totalDx < -threshold -> {
+                                // swipe left → next day
+                                scope.launch {
+                                    offsetX.animateTo(-widthPx, tween(150))
+                                    vm.nextDay()
+                                    offsetX.snapTo(widthPx)
+                                    offsetX.animateTo(0f, tween(150))
+                                }
+                            }
+                            else -> {
+                                // not enough, spring back
+                                scope.launch { offsetX.animateTo(0f, tween(150)) }
+                            }
+                        }
                         totalDx = 0f
                     },
-                    onDragCancel = { totalDx = 0f }
+                    onDragCancel = {
+                        scope.launch { offsetX.animateTo(0f, tween(150)) }
+                        totalDx = 0f
+                    }
                 )
             }
             .padding(16.dp)
@@ -244,38 +313,41 @@ fun FoodScreen(vm: FoodViewModel, modifier: Modifier = Modifier, openDrawer: () 
         val aggregated = remember(entries) {
             entries.groupBy { it.name }.mapValues { it.value.sumOf { e -> e.quantity } }
         }
-        FlowRow(
+        Crossfade(
+            targetState = aggregated,
+            label = "entries",
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .animateContentSize(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            aggregated.entries.forEach { (name, qty) ->
-                AssistChip(
-                    colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-                    modifier = Modifier
-                        .heightIn(min = 56.dp)
-                        .combinedClickable(
-                            onClick = {},
-                            onLongClick = { vm.removeOne(name) }
-                        ),
-                    label = {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(name, style = MaterialTheme.typography.bodyLarge)
-                            if (qty > 1) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                                ) {
-                                    Text("$qty", modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelMedium)
+                .animateContentSize()
+                .offset { IntOffset(offsetX.value.toInt(), 0) }
+        ) { animAggregated ->
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                animAggregated.entries.forEach { (name, qty) ->
+                    AssistChip(
+                        colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                        modifier = Modifier.heightIn(min = 56.dp),
+                        onClick = { confirmDelete = name },
+                        label = {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(name, style = MaterialTheme.typography.bodyLarge)
+                                if (qty > 1) {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                                    ) {
+                                        Text("$qty", modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelMedium)
+                                    }
                                 }
                             }
                         }
-                    }
-                )
+                    )
+                }
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -310,15 +382,15 @@ fun FoodScreen(vm: FoodViewModel, modifier: Modifier = Modifier, openDrawer: () 
         }
         Spacer(Modifier.height(8.dp))
 
-        // Quick-add lists – each limited to 2 lines.  Title and chips share the same FlowRow so the heading doesn't occupy a full extra row.
+        // Quick-add lists – title on its own line, chips up to 2 lines
 
+        Text(if (isHebrew) "אחרונים" else "Recent", style = MaterialTheme.typography.labelSmall)
         FlowRow(
             Modifier.fillMaxWidth(),
             maxLines = 2,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(if (isHebrew) "נפוצים:" else "Recent:", style = MaterialTheme.typography.labelLarge)
             recentNames.forEach { food ->
                 AssistChip(onClick = { vm.addFood(food) }, label = { Text(food) })
             }
@@ -326,16 +398,38 @@ fun FoodScreen(vm: FoodViewModel, modifier: Modifier = Modifier, openDrawer: () 
 
         Spacer(Modifier.height(4.dp))
 
+        Text(if (isHebrew) "נפוצים" else "Common", style = MaterialTheme.typography.labelSmall)
         FlowRow(
             Modifier.fillMaxWidth(),
             maxLines = 2,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(if (isHebrew) "פופולריים:" else "Common:", style = MaterialTheme.typography.labelLarge)
             popularNames.forEach { food ->
                 AssistChip(colors = AssistChipDefaults.assistChipColors(), onClick = { vm.addFood(food) }, label = { Text(food) })
             }
+        }
+
+        // confirmation dialog
+        confirmDelete?.let { delName ->
+            AlertDialog(
+                onDismissRequest = { confirmDelete = null },
+                title = { Text(if (isHebrew) "מחיקה" else "Delete") },
+                text = { Text(if (isHebrew) "להסיר \"$delName\"?" else "Remove \"$delName\"?") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        vm.removeOne(delName)
+                        confirmDelete = null
+                    }) {
+                        Text(if (isHebrew) "כן" else "Yes")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { confirmDelete = null }) {
+                        Text(if (isHebrew) "לא" else "No")
+                    }
+                }
+            )
         }
     }
 }
