@@ -123,6 +123,8 @@ class MainActivity : ComponentActivity() {
                     })
                     val drawerState = rememberDrawerState(DrawerValue.Closed)
                     val scope = rememberCoroutineScope()
+                    val layoutDirection = LocalLayoutDirection.current
+                    val isRtlLayout = layoutDirection == LayoutDirection.Rtl
 
                     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
                         uri?.let {
@@ -209,6 +211,7 @@ fun FoodScreen(vm: FoodViewModel, modifier: Modifier = Modifier, openDrawer: () 
     // horizontal swipe offset for pager-like animation
     val offsetX = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
+    val isRtlLayout = LocalLayoutDirection.current == LayoutDirection.Rtl
 
     Column(
         modifier
@@ -229,20 +232,22 @@ fun FoodScreen(vm: FoodViewModel, modifier: Modifier = Modifier, openDrawer: () 
                         val threshold = widthPx * 0.25f
                         when {
                             totalDx > threshold -> {
-                                // swipe right → previous day
+                                // swipe right – prev in LTR, next in RTL
+                                val dir = 1f // right swipe
                                 scope.launch {
-                                    offsetX.animateTo(widthPx, tween(150))
-                                    vm.prevDay()
-                                    offsetX.snapTo(-widthPx)
+                                    offsetX.animateTo(dir * widthPx, tween(150))
+                                    if (isRtlLayout) vm.nextDay() else vm.prevDay()
+                                    offsetX.snapTo(-dir * widthPx)
                                     offsetX.animateTo(0f, tween(150))
                                 }
                             }
                             totalDx < -threshold -> {
-                                // swipe left → next day
+                                // swipe left – next in LTR, prev in RTL
+                                val dir = -1f // left swipe
                                 scope.launch {
-                                    offsetX.animateTo(-widthPx, tween(150))
-                                    vm.nextDay()
-                                    offsetX.snapTo(widthPx)
+                                    offsetX.animateTo(dir * widthPx, tween(150))
+                                    if (isRtlLayout) vm.prevDay() else vm.nextDay()
+                                    offsetX.snapTo(-dir * widthPx)
                                     offsetX.animateTo(0f, tween(150))
                                 }
                             }
@@ -320,7 +325,7 @@ fun FoodScreen(vm: FoodViewModel, modifier: Modifier = Modifier, openDrawer: () 
                 .weight(1f)
                 .fillMaxWidth()
                 .animateContentSize()
-                .offset { IntOffset(offsetX.value.toInt(), 0) }
+                .offset { IntOffset((if (isRtlLayout) -offsetX.value else offsetX.value).toInt(), 0) }
         ) { animAggregated ->
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
