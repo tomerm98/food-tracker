@@ -10,7 +10,10 @@ class FoodRepository(private val dao: FoodEntryDao) {
 
     suspend fun recentNames(): List<String> = dao.recentNames()
 
-    suspend fun popularNames(): List<String> = dao.popularNames()
+    suspend fun popularNames(): List<String> {
+        val cutoff = LocalDate.now().minusMonths(1).toEpochDay()
+        return dao.popularNamesSince(cutoff)
+    }
 
     suspend fun exportCsv(): String {
         val entries = dao.getAll()

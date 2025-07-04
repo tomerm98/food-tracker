@@ -36,6 +36,9 @@ interface FoodEntryDao {
     @Query("SELECT name FROM FoodEntry GROUP BY name ORDER BY COUNT(DISTINCT date) DESC, MAX(date) DESC")
     suspend fun popularNames(): List<String>
 
+    @Query("SELECT name FROM FoodEntry WHERE date >= :thresholdEpochDay GROUP BY name ORDER BY COUNT(DISTINCT date) DESC, MAX(date) DESC LIMIT 10")
+    suspend fun popularNamesSince(thresholdEpochDay: Long): List<String>
+
     @Query("SELECT * FROM FoodEntry")
     suspend fun getAll(): List<FoodEntry>
 
