@@ -1,67 +1,95 @@
 package com.example.foodtracker
 
-import android.app.DatePickerDialog
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Today
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
-import androidx.compose.material3.DrawerValue
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalDrawerSheet
-import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
+import com.example.foodtracker.ui.theme.FoodTrackerTheme
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.ViewModelProvider
 import com.example.foodtracker.data.AppDatabase
 import com.example.foodtracker.data.FoodRepository
-import com.example.foodtracker.ui.theme.FoodTrackerTheme
-import kotlinx.coroutines.launch
-import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.ViewModel
+import android.app.DatePickerDialog
+import java.time.LocalDate
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Today
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.rememberDrawerState
+import kotlinx.coroutines.launch
+import android.widget.Toast
+import androidx.compose.material3.Divider
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.animation.core.tween
+import androidx.compose.material3.Surface
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.material3.Switch
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.AlertDialog
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ExperimentalAnimationApi
+import androidx.compose.animation.with
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.AnimatedContentScope
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.Animatable
+import androidx.compose.ui.unit.IntOffset
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -98,52 +126,36 @@ class MainActivity : ComponentActivity() {
                     val layoutDirection = LocalLayoutDirection.current
                     val isRtlLayout = layoutDirection == LayoutDirection.Rtl
 
-                    val exportLauncher =
-                        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
-                            uri?.let {
-                                scope.launch {
-                                    val csv = vm.exportCsv()
-                                    context.contentResolver.openOutputStream(it)?.bufferedWriter()
-                                        ?.use { writer -> writer.write(csv) }
-                                    Toast.makeText(context, "Exported CSV", Toast.LENGTH_SHORT)
-                                        .show()
-                                }
+                    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
+                        uri?.let {
+                            scope.launch {
+                                val csv = vm.exportCsv()
+                                context.contentResolver.openOutputStream(it)?.bufferedWriter()?.use { writer -> writer.write(csv) }
+                                Toast.makeText(context, "Exported CSV", Toast.LENGTH_SHORT).show()
                             }
                         }
+                    }
 
-                    val importLauncher =
-                        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-                            uri?.let {
-                                scope.launch {
-                                    val csv = context.contentResolver.openInputStream(it)
-                                        ?.bufferedReader()?.readText() ?: ""
-                                    vm.importCsv(csv)
-                                    Toast.makeText(context, "Imported CSV", Toast.LENGTH_SHORT)
-                                        .show()
-                                }
+                    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                        uri?.let {
+                            scope.launch {
+                                val csv = context.contentResolver.openInputStream(it)?.bufferedReader()?.readText() ?: ""
+                                vm.importCsv(csv)
+                                Toast.makeText(context, "Imported CSV", Toast.LENGTH_SHORT).show()
                             }
                         }
+                    }
 
                     ModalNavigationDrawer(
                         drawerState = drawerState,
                         drawerContent = {
                             ModalDrawerSheet {
-                                Text(
-                                    if (isHebrew.value) "תפריט" else "Menu",
-                                    modifier = Modifier.padding(16.dp),
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                                HorizontalDivider()
-                                TextButton(
-                                    onClick = { exportLauncher.launch("food_log.csv") },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
+                                Text(if (isHebrew.value) "תפריט" else "Menu", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium)
+                                Divider()
+                                TextButton(onClick = { exportLauncher.launch("food_log.csv") }, modifier = Modifier.fillMaxWidth()) {
                                     Text(if (isHebrew.value) "יצוא CSV" else "Export CSV")
                                 }
-                                TextButton(
-                                    onClick = { importLauncher.launch(arrayOf("text/*")) },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
+                                TextButton(onClick = { importLauncher.launch(arrayOf("text/*")) }, modifier = Modifier.fillMaxWidth()) {
                                     Text(if (isHebrew.value) "יבוא CSV" else "Import CSV")
                                 }
 
@@ -164,12 +176,7 @@ class MainActivity : ComponentActivity() {
                         }
                     ) {
                         Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                            FoodScreen(
-                                vm,
-                                Modifier.padding(innerPadding),
-                                openDrawer = { scope.launch { drawerState.open() } },
-                                isHebrew = isHebrew.value
-                            )
+                            FoodScreen(vm, Modifier.padding(innerPadding), openDrawer = { scope.launch { drawerState.open() } }, isHebrew = isHebrew.value)
                         }
                     }
                 }
@@ -180,12 +187,7 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
-fun FoodScreen(
-    vm: FoodViewModel,
-    modifier: Modifier = Modifier,
-    openDrawer: () -> Unit,
-    isHebrew: Boolean = false
-) {
+fun FoodScreen(vm: FoodViewModel, modifier: Modifier = Modifier, openDrawer: () -> Unit, isHebrew: Boolean = false) {
     val entries by vm.dayEntries.collectAsState()
     val recentNames by vm.recentNames.collectAsState()
     val popularNames by vm.popularNames.collectAsState()
@@ -206,32 +208,66 @@ fun FoodScreen(
         }
     }
 
+    // horizontal swipe offset for pager-like animation
+    val offsetX = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
     val isRtlLayout = LocalLayoutDirection.current == LayoutDirection.Rtl
-
-    // pager to display prev/current/next day chips
-    val pagerState = rememberPagerState(initialPage = 1, pageCount = { 3 })
-
-    // react to page changes and update the date accordingly, then snap back to center page
-    LaunchedEffect(pagerState.currentPage) {
-        when (pagerState.currentPage) {
-            0 -> {
-                if (isRtlLayout) vm.nextDay() else vm.prevDay()
-                pagerState.scrollToPage(1)
-            }
-            2 -> {
-                if (isRtlLayout) vm.prevDay() else vm.nextDay()
-                pagerState.scrollToPage(1)
-            }
-        }
-    }
 
     Column(
         modifier
             .fillMaxSize()
+            .pointerInput(Unit) {
+                val widthPx = size.width.toFloat()
+                var totalDx = 0f
+
+                detectHorizontalDragGestures(
+                    onHorizontalDrag = { change, dragAmount ->
+                        totalDx += dragAmount
+                        // follow finger
+                        scope.launch {
+                            offsetX.snapTo(offsetX.value + dragAmount)
+                        }
+                    },
+                    onDragEnd = {
+                        val threshold = widthPx * 0.25f
+                        when {
+                            totalDx > threshold -> {
+                                // swipe right – prev in LTR, next in RTL
+                                val dir = 1f // right swipe
+                                scope.launch {
+                                    offsetX.animateTo(dir * widthPx, tween(150))
+                                    if (isRtlLayout) vm.nextDay() else vm.prevDay()
+                                    offsetX.snapTo(-dir * widthPx)
+                                    offsetX.animateTo(0f, tween(150))
+                                }
+                            }
+                            totalDx < -threshold -> {
+                                // swipe left – next in LTR, prev in RTL
+                                val dir = -1f // left swipe
+                                scope.launch {
+                                    offsetX.animateTo(dir * widthPx, tween(150))
+                                    if (isRtlLayout) vm.prevDay() else vm.nextDay()
+                                    offsetX.snapTo(-dir * widthPx)
+                                    offsetX.animateTo(0f, tween(150))
+                                }
+                            }
+                            else -> {
+                                // not enough, spring back
+                                scope.launch { offsetX.animateTo(0f, tween(150)) }
+                            }
+                        }
+                        totalDx = 0f
+                    },
+                    onDragCancel = {
+                        scope.launch { offsetX.animateTo(0f, tween(150)) }
+                        totalDx = 0f
+                    }
+                )
+            }
             .padding(16.dp)
     ) {
         // reset to today when app resumes
-        val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+        val lifecycleOwner = LocalLifecycleOwner.current
         // Remember the last day the app was resumed to decide when to auto-switch to today
         val lastResumeDay = rememberSaveable { mutableStateOf(LocalDate.now()) }
 
@@ -251,17 +287,8 @@ fun FoodScreen(
         }
 
         // Top control row
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = openDrawer) {
-                Icon(
-                    Icons.Default.Menu,
-                    contentDescription = if (isHebrew) "תפריט" else "Menu"
-                )
-            }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = openDrawer) { Icon(Icons.Default.Menu, contentDescription = if (isHebrew) "תפריט" else "Menu") }
 
             TextButton(onClick = {
                 val c = date
@@ -277,11 +304,7 @@ fun FoodScreen(
                     Text(text = formatter.format(date))
                     if (date == LocalDate.now()) {
                         Spacer(Modifier.width(4.dp))
-                        Icon(
-                            Icons.Filled.Star,
-                            contentDescription = "Today",
-                            modifier = Modifier.size(16.dp)
-                        )
+                        Icon(Icons.Filled.Star, contentDescription = "Today", modifier = Modifier.size(16.dp))
                     }
                 }
             }
@@ -292,42 +315,30 @@ fun FoodScreen(
         }
         Spacer(Modifier.height(8.dp))
         // Top half list
-        val prevDate = date.minusDays(1)
-        val nextDate = date.plusDays(1)
-
-        val prevEntries by vm.entriesFor(prevDate).collectAsState(initial = emptyList())
-        val currentEntries by vm.entriesFor(date).collectAsState(initial = emptyList())
-        val nextEntries by vm.entriesFor(nextDate).collectAsState(initial = emptyList())
-
-        fun aggregate(list: List<com.example.foodtracker.data.FoodEntry>) =
-            list.groupBy { it.name }.mapValues { it.value.sumOf { e -> e.quantity } }
-
-        val pages =
-            listOf(aggregate(prevEntries), aggregate(currentEntries), aggregate(nextEntries))
-
-        HorizontalPager(
-            state = pagerState,
-            reverseLayout = isRtlLayout,
-            modifier = Modifier.weight(1f)
-        ) { pageIndex ->
-            val aggregatedMap = pages[pageIndex]
-
+        val aggregated = remember(entries) {
+            entries.groupBy { it.name }.mapValues { it.value.sumOf { e -> e.quantity } }
+        }
+        Crossfade(
+            targetState = aggregated,
+            label = "entries",
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .animateContentSize()
+                .offset { IntOffset((if (isRtlLayout) -offsetX.value else offsetX.value).toInt(), 0) }
+        ) { animAggregated ->
             FlowRow(
-                modifier = Modifier
-                    .fillMaxSize(),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                aggregatedMap.entries.forEach { (name, qty) ->
+                animAggregated.entries.forEach { (name, qty) ->
                     AssistChip(
                         colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
                         modifier = Modifier.heightIn(min = 56.dp),
                         onClick = { confirmDelete = name },
                         label = {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(name, style = MaterialTheme.typography.bodyLarge)
                                 if (qty > 1) {
                                     Surface(
@@ -335,11 +346,7 @@ fun FoodScreen(
                                         color = MaterialTheme.colorScheme.primary,
                                         contentColor = MaterialTheme.colorScheme.onPrimary,
                                     ) {
-                                        Text(
-                                            "$qty",
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                            style = MaterialTheme.typography.labelMedium
-                                        )
+                                        Text("$qty", modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelMedium)
                                     }
                                 }
                             }
@@ -404,10 +411,7 @@ fun FoodScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             popularNames.forEach { food ->
-                AssistChip(
-                    colors = AssistChipDefaults.assistChipColors(),
-                    onClick = { vm.addFood(food) },
-                    label = { Text(food) })
+                AssistChip(colors = AssistChipDefaults.assistChipColors(), onClick = { vm.addFood(food) }, label = { Text(food) })
             }
         }
 
@@ -439,10 +443,6 @@ fun FoodScreen(
 @Composable
 fun GreetingPreview() {
     FoodTrackerTheme {
-        FoodScreen(
-            FoodViewModel(FoodRepository.create(AppDatabase.getInstance(LocalContext.current))),
-            openDrawer = {},
-            isHebrew = false
-        )
+        FoodScreen(FoodViewModel(FoodRepository.create(AppDatabase.getInstance(LocalContext.current))), openDrawer = {}, isHebrew = false)
     }
 }

@@ -2,16 +2,9 @@ package com.example.foodtracker
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.foodtracker.data.FoodEntry
 import com.example.foodtracker.data.FoodRepository
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
+import com.example.foodtracker.data.FoodEntry
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
@@ -57,21 +50,9 @@ class FoodViewModel(private val repository: FoodRepository) : ViewModel() {
         }
     }
 
-    fun prevDay() {
-        _currentDate.update { it.minusDays(1) }
-    }
-
-    fun nextDay() {
-        _currentDate.update { it.plusDays(1) }
-    }
-
-    fun setDate(date: LocalDate) {
-        _currentDate.value = date
-    }
-
-    // Provide entries flow for any given date (used by pager preview pages)
-    fun entriesFor(date: LocalDate): Flow<List<FoodEntry>> =
-        repository.entriesForDate(date.toEpochDay())
+    fun prevDay() { _currentDate.update { it.minusDays(1) } }
+    fun nextDay() { _currentDate.update { it.plusDays(1) } }
+    fun setDate(date: LocalDate) { _currentDate.value = date }
 
     private fun refreshRecentNames() {
         viewModelScope.launch {

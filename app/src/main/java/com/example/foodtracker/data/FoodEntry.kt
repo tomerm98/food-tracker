@@ -1,6 +1,7 @@
 package com.example.foodtracker.data
 
 import androidx.room.Entity
+import androidx.room.PrimaryKey
 
 @Entity(primaryKeys = ["date", "name"])
 data class FoodEntry(
