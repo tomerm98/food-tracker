@@ -58,64 +58,98 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.animation.core.tween
 import androidx.compose.material3.Surface
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.material3.Switch
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material.icons.filled.Star
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            FoodTrackerTheme {
-                val context = LocalContext.current
-                val vm: FoodViewModel = viewModel(factory = object : ViewModelProvider.Factory {
-                    override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                        val db = AppDatabase.getInstance(context)
-                        val repo = FoodRepository.create(db)
-                        @Suppress("UNCHECKED_CAST")
-                        return FoodViewModel(repo) as T
-                    }
-                })
-                val drawerState = rememberDrawerState(DrawerValue.Closed)
-                val scope = rememberCoroutineScope()
+            val isHebrew = rememberSaveable { mutableStateOf(false) }
 
-                val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
-                    uri?.let {
-                        scope.launch {
-                            val csv = vm.exportCsv()
-                            context.contentResolver.openOutputStream(it)?.bufferedWriter()?.use { writer -> writer.write(csv) }
-                            Toast.makeText(context, "Exported CSV", Toast.LENGTH_SHORT).show()
+            CompositionLocalProvider(LocalLayoutDirection provides if (isHebrew.value) LayoutDirection.Rtl else LayoutDirection.Ltr) {
+                FoodTrackerTheme {
+                    val context = LocalContext.current
+                    val keyboardController = LocalSoftwareKeyboardController.current
+                    val focusManager = LocalFocusManager.current
+                    val vm: FoodViewModel = viewModel(factory = object : ViewModelProvider.Factory {
+                        override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                            val db = AppDatabase.getInstance(context)
+                            val repo = FoodRepository.create(db)
+                            @Suppress("UNCHECKED_CAST")
+                            return FoodViewModel(repo) as T
+                        }
+                    })
+                    val drawerState = rememberDrawerState(DrawerValue.Closed)
+                    val scope = rememberCoroutineScope()
+
+                    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
+                        uri?.let {
+                            scope.launch {
+                                val csv = vm.exportCsv()
+                                context.contentResolver.openOutputStream(it)?.bufferedWriter()?.use { writer -> writer.write(csv) }
+                                Toast.makeText(context, "Exported CSV", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }
-                }
 
-                val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-                    uri?.let {
-                        scope.launch {
-                            val csv = context.contentResolver.openInputStream(it)?.bufferedReader()?.readText() ?: ""
-                            vm.importCsv(csv)
-                            Toast.makeText(context, "Imported CSV", Toast.LENGTH_SHORT).show()
+                    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                        uri?.let {
+                            scope.launch {
+                                val csv = context.contentResolver.openInputStream(it)?.bufferedReader()?.readText() ?: ""
+                                vm.importCsv(csv)
+                                Toast.makeText(context, "Imported CSV", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }
-                }
 
-                ModalNavigationDrawer(
-                    drawerState = drawerState,
-                    drawerContent = {
-                        ModalDrawerSheet {
-                            Text("Menu", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium)
-                            Divider()
-                            TextButton(onClick = { exportLauncher.launch("food_log.csv") }, modifier = Modifier.fillMaxWidth()) { Text("Export CSV") }
-                            TextButton(onClick = { importLauncher.launch(arrayOf("text/*")) }, modifier = Modifier.fillMaxWidth()) { Text("Import CSV") }
+                    ModalNavigationDrawer(
+                        drawerState = drawerState,
+                        drawerContent = {
+                            ModalDrawerSheet {
+                                Text(if (isHebrew.value) "תפריט" else "Menu", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium)
+                                Divider()
+                                TextButton(onClick = { exportLauncher.launch("food_log.csv") }, modifier = Modifier.fillMaxWidth()) {
+                                    Text(if (isHebrew.value) "יצוא CSV" else "Export CSV")
+                                }
+                                TextButton(onClick = { importLauncher.launch(arrayOf("text/*")) }, modifier = Modifier.fillMaxWidth()) {
+                                    Text(if (isHebrew.value) "יבוא CSV" else "Import CSV")
+                                }
+
+                                // RTL toggle
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("עברית", modifier = Modifier.weight(1f))
+                                    Switch(checked = isHebrew.value, onCheckedChange = { isHebrew.value = it })
+                                }
+                            }
                         }
-                    }
-                ) {
-                    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                        FoodScreen(vm, Modifier.padding(innerPadding), openDrawer = { scope.launch { drawerState.open() } })
+                    ) {
+                        Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                            FoodScreen(vm, Modifier.padding(innerPadding), openDrawer = { scope.launch { drawerState.open() } }, isHebrew = isHebrew.value)
+                        }
                     }
                 }
             }
@@ -125,7 +159,7 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
-fun FoodScreen(vm: FoodViewModel, modifier: Modifier = Modifier, openDrawer: () -> Unit) {
+fun FoodScreen(vm: FoodViewModel, modifier: Modifier = Modifier, openDrawer: () -> Unit, isHebrew: Boolean = false) {
     val entries by vm.dayEntries.collectAsState()
     val recentNames by vm.recentNames.collectAsState()
     val popularNames by vm.popularNames.collectAsState()
@@ -135,6 +169,8 @@ fun FoodScreen(vm: FoodViewModel, modifier: Modifier = Modifier, openDrawer: () 
     var newFood by remember { mutableStateOf("") }
 
     val ctx = LocalContext.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
 
     Column(
         modifier
@@ -158,10 +194,18 @@ fun FoodScreen(vm: FoodViewModel, modifier: Modifier = Modifier, openDrawer: () 
     ) {
         // reset to today when app resumes
         val lifecycleOwner = LocalLifecycleOwner.current
+        // Remember the last day the app was resumed to decide when to auto-switch to today
+        val lastResumeDay = rememberSaveable { mutableStateOf(LocalDate.now()) }
+
         DisposableEffect(lifecycleOwner) {
             val observer = LifecycleEventObserver { _, event ->
                 if (event == Lifecycle.Event.ON_RESUME) {
-                    vm.setDate(LocalDate.now())
+                    val today = LocalDate.now()
+                    // Only reset if we've moved to a new calendar day since the last resume
+                    if (today != lastResumeDay.value) {
+                        vm.setDate(today)
+                        lastResumeDay.value = today
+                    }
                 }
             }
             lifecycleOwner.lifecycle.addObserver(observer)
@@ -170,7 +214,7 @@ fun FoodScreen(vm: FoodViewModel, modifier: Modifier = Modifier, openDrawer: () 
 
         // Top control row
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = openDrawer) { Icon(Icons.Default.Menu, contentDescription = "Menu") }
+            IconButton(onClick = openDrawer) { Icon(Icons.Default.Menu, contentDescription = if (isHebrew) "תפריט" else "Menu") }
 
             TextButton(onClick = {
                 val c = date
@@ -182,11 +226,17 @@ fun FoodScreen(vm: FoodViewModel, modifier: Modifier = Modifier, openDrawer: () 
                     c.dayOfMonth
                 ).show()
             }) {
-                Text(text = formatter.format(date))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = formatter.format(date))
+                    if (date == LocalDate.now()) {
+                        Spacer(Modifier.width(4.dp))
+                        Icon(Icons.Filled.Star, contentDescription = "Today", modifier = Modifier.size(16.dp))
+                    }
+                }
             }
 
             IconButton(onClick = { vm.setDate(LocalDate.now()) }) {
-                Icon(Icons.Default.Today, contentDescription = "Today")
+                Icon(Icons.Default.Today, contentDescription = if (isHebrew) "היום" else "Today")
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -211,7 +261,6 @@ fun FoodScreen(vm: FoodViewModel, modifier: Modifier = Modifier, openDrawer: () 
                             onClick = {},
                             onLongClick = { vm.removeOne(name) }
                         ),
-                    onClick = {},
                     label = {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(name, style = MaterialTheme.typography.bodyLarge)
@@ -235,8 +284,17 @@ fun FoodScreen(vm: FoodViewModel, modifier: Modifier = Modifier, openDrawer: () 
             OutlinedTextField(
                 value = newFood,
                 onValueChange = { newFood = it },
-                label = { Text("Food name") },
+                label = { Text(if (isHebrew) "שם מאכל" else "Food name") },
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = {
+                    if (newFood.isNotBlank()) {
+                        vm.addFood(newFood.trim())
+                        newFood = ""
+                        keyboardController?.hide()
+                        focusManager.clearFocus()
+                    }
+                }),
                 modifier = Modifier.weight(1f)
             )
             Spacer(Modifier.width(8.dp))
@@ -248,27 +306,33 @@ fun FoodScreen(vm: FoodViewModel, modifier: Modifier = Modifier, openDrawer: () 
                     }
                 },
                 enabled = newFood.isNotBlank()
-            ) { Text("Add") }
+            ) { Text(if (isHebrew) "הוסף" else "Add") }
         }
         Spacer(Modifier.height(8.dp))
-        // Quick add rows with labels
-        Text("Recent", style = MaterialTheme.typography.labelLarge)
+
+        // Quick-add lists – each limited to 2 lines.  Title and chips share the same FlowRow so the heading doesn't occupy a full extra row.
+
         FlowRow(
             Modifier.fillMaxWidth(),
+            maxLines = 2,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            Text(if (isHebrew) "נפוצים:" else "Recent:", style = MaterialTheme.typography.labelLarge)
             recentNames.forEach { food ->
                 AssistChip(onClick = { vm.addFood(food) }, label = { Text(food) })
             }
         }
+
         Spacer(Modifier.height(4.dp))
-        Text("Common", style = MaterialTheme.typography.labelLarge)
+
         FlowRow(
             Modifier.fillMaxWidth(),
+            maxLines = 2,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            Text(if (isHebrew) "פופולריים:" else "Common:", style = MaterialTheme.typography.labelLarge)
             popularNames.forEach { food ->
                 AssistChip(colors = AssistChipDefaults.assistChipColors(), onClick = { vm.addFood(food) }, label = { Text(food) })
             }
@@ -280,6 +344,6 @@ fun FoodScreen(vm: FoodViewModel, modifier: Modifier = Modifier, openDrawer: () 
 @Composable
 fun GreetingPreview() {
     FoodTrackerTheme {
-        FoodScreen(FoodViewModel(FoodRepository.create(AppDatabase.getInstance(LocalContext.current))), openDrawer = {})
+        FoodScreen(FoodViewModel(FoodRepository.create(AppDatabase.getInstance(LocalContext.current))), openDrawer = {}, isHebrew = false)
     }
 }

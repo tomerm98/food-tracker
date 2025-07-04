@@ -44,6 +44,9 @@ class FoodViewModel(private val repository: FoodRepository) : ViewModel() {
         val date = _currentDate.value.toEpochDay()
         viewModelScope.launch {
             repository.removeOne(date, name)
+            // Refresh cached lists to reflect possible deletion
+            _recentNames.value = repository.recentNames().take(10)
+            _popularNames.value = repository.popularNames().take(10)
         }
     }
 
