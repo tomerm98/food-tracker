@@ -1,6 +1,7 @@
 package com.example.foodtracker.data
 
 import kotlinx.coroutines.flow.Flow
+import java.time.LocalDate
 
 class FoodRepository(private val dao: FoodEntryDao) {
     fun entriesForDate(epochDay: Long): Flow<List<FoodEntry>> = dao.observeEntriesForDate(epochDay)
@@ -14,9 +15,10 @@ class FoodRepository(private val dao: FoodEntryDao) {
     suspend fun exportCsv(): String {
         val entries = dao.getAll()
         return buildString {
-            appendLine("date_epoch_day,name,quantity")
+            appendLine("date,name,quantity")
             entries.forEach { e ->
-                appendLine("${e.date},${e.name},${e.quantity}")
+                val isoDate = LocalDate.ofEpochDay(e.date).toString()
+                appendLine("$isoDate,${e.name},${e.quantity}")
             }
         }
     }
@@ -25,10 +27,14 @@ class FoodRepository(private val dao: FoodEntryDao) {
         csv.lineSequence().drop(1).forEach { line ->
             val parts = line.split(',')
             if (parts.size >= 3) {
-                val date = parts[0].toLongOrNull() ?: return@forEach
-                val name = parts[1]
-                val qty = parts[2].toIntOrNull() ?: 1
-                repeat(qty) { dao.upsert(date, name) }
+                try {
+                    val epochDay = LocalDate.parse(parts[0].trim()).toEpochDay()
+                    val name = parts[1]
+                    val qty = parts[2].toIntOrNull() ?: 1
+                    repeat(qty) { dao.upsert(epochDay, name) }
+                } catch (_: Exception) {
+                    // ignore malformed line
+                }
             }
         }
     }
